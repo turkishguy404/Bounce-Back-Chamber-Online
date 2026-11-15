@@ -45,7 +45,7 @@ void astroSetupProjection(int windowWidth, int windowHeight) {
 	glViewport(0, 0, windowWidth, windowHeight);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0, windowWidth, windowHeight, 0, -1, 1); 
+	glOrtho(0, windowWidth, windowHeight, 0, -1, 1);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 }
@@ -69,16 +69,37 @@ int AstroObjects::astroStartObject(int ntype, unsigned int nwidth, unsigned int 
 		pixels[i + 1] = (unsigned char)green;
 		pixels[i + 2] = (unsigned char)blue;
 	}
+	alpha.clear(); // duz renkli obje: tamami opak
 	astroUploadTexture();
 	return 0;
 }
 
+void AstroObjects::astroSetColorKey(bool enabled, int r, int g, int b) {
+	useColorKey = enabled;
+	keyRed = (unsigned char)r;
+	keyGreen = (unsigned char)g;
+	keyBlue = (unsigned char)b;
+}
+
 void AstroObjects::astroUploadTexture() {
+	// RGB pikselleri + alpha maskesini tek bir RGBA tampona birlestir
+	size_t n = (size_t)width * height;
+	if (n == 0 || pixels.size() < n * 3) return;
+	bool hasAlpha = (alpha.size() == n);
+
+	std::vector<unsigned char> rgba(n * 4);
+	for (size_t i = 0; i < n; i++) {
+		rgba[i * 4 + 0] = pixels[i * 3 + 0];
+		rgba[i * 4 + 1] = pixels[i * 3 + 1];
+		rgba[i * 4 + 2] = pixels[i * 3 + 2];
+		rgba[i * 4 + 3] = hasAlpha ? alpha[i] : 255;
+	}
+
 	if (!texId) glGenTextures(1, &texId);
 	glBindTexture(GL_TEXTURE_2D, texId);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, (GLsizei)width, (GLsizei)height, 0,
-		GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)width, (GLsizei)height, 0,
+		GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 }
@@ -89,33 +110,54 @@ int AstroObjects::astroSetTexture(const std::string& filename, std::vector<unsig
 		std::cerr << "Error: Could not open file " << filename << std::endl;
 		return -1;
 	}
-	texturePixels.resize(width * height * 3);
-	pixels.resize(width * height * 3);
+	size_t n = (size_t)width * height;
+	texturePixels.assign(n * 3, 0);
+	pixels.assign(n * 3, 0);
+	alpha.assign(n, 0); // dosyada olmayan pikseller bos (gorunmez) kalir
 
+	// Satir formati: "R G B" veya "R G B A"
 	std::string line;
-	size_t i = 0;
-	while (std::getline(file, line) && i + 2 < pixels.size()) {
+	size_t p = 0;
+	while (p < n && std::getline(file, line)) {
 		std::istringstream iss(line);
 		int nred, ngreen, nblue;
 		if (!(iss >> nred >> ngreen >> nblue)) continue;
+		int na;
+		if (!(iss >> na)) na = 255;
+		if (useColorKey && nred == keyRed && ngreen == keyGreen && nblue == keyBlue)
+			na = 0; // bos piksel
+
+		size_t i = p * 3;
 		pixels[i + 0] = (unsigned char)nred;
 		pixels[i + 1] = (unsigned char)ngreen;
 		pixels[i + 2] = (unsigned char)nblue;
 		texturePixels[i + 0] = pixels[i + 0];
 		texturePixels[i + 1] = pixels[i + 1];
 		texturePixels[i + 2] = pixels[i + 2];
-		i += 3;
+		alpha[p] = (unsigned char)(na < 0 ? 0 : (na > 255 ? 255 : na));
+		p++;
 	}
 	astroUploadTexture();
 	return 0;
 }
 
 int AstroObjects::astroUpdateTexture(const std::vector<unsigned char>& texturePixels) {
-	if (texturePixels.size() != (size_t)width * height * 3) {
+	size_t n = (size_t)width * height;
+	if (texturePixels.size() != n * 3) {
 		std::cerr << "Error: texture size mismatch" << std::endl;
 		return -1;
 	}
 	pixels = texturePixels;
+	// Color key aciksa maskeyi yeni piksellerden yeniden hesapla,
+	// kapaliysa onceki maske (ornegin dosyadan gelen alpha) korunur
+	if (useColorKey) {
+		alpha.resize(n);
+		for (size_t p = 0; p < n; p++) {
+			size_t i = p * 3;
+			bool empty = pixels[i] == keyRed && pixels[i + 1] == keyGreen && pixels[i + 2] == keyBlue;
+			alpha[p] = empty ? 0 : 255;
+		}
+	}
 	astroUploadTexture();
 	return 0;
 }
@@ -125,7 +167,13 @@ int AstroObjects::astroUpdateObject(int /*windowWidth*/, int /*windowHeight*/) {
 
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, texId);
-	glColor3f(1.0f, 1.0f, 1.0f);
+	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+	// Bos (alpha = 0) pikselleri hic cizme, yari saydamlari karistir
+	glEnable(GL_ALPHA_TEST);
+	glAlphaFunc(GL_GREATER, 0.0f);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	float hw = width / 2.0f;
 	float hh = height / 2.0f;
@@ -141,6 +189,8 @@ int AstroObjects::astroUpdateObject(int /*windowWidth*/, int /*windowHeight*/) {
 	glEnd();
 	glPopMatrix();
 
+	glDisable(GL_BLEND);
+	glDisable(GL_ALPHA_TEST);
 	glDisable(GL_TEXTURE_2D);
 	return 0;
 }
@@ -243,11 +293,11 @@ void astroPhysicsStep(std::vector<AstroObjects*>& objects, float dt) {
 			}
 
 			if (bothFlat && a->vx > 0.0f)
-				a->x_location = b->x_location - (float)a->width;     
+				a->x_location = b->x_location - (float)a->width;
 			else if (bothFlat&& a->vx < 0.0f)
-				a->x_location = b->x_location + (float)b->width;     
+				a->x_location = b->x_location + (float)b->width;
 			else
-				a->x_location = oldX;                                
+				a->x_location = oldX;
 			a->vx = 0.0f;
 		}
 
@@ -258,11 +308,11 @@ void astroPhysicsStep(std::vector<AstroObjects*>& objects, float dt) {
 			bool bothFlat = (a->angle == 0.0f && b->angle == 0.0f);
 			bool falling = a->vy > 0.0f;
 			if (bothFlat && falling)
-				a->y_location = b->y_location - (float)a->height;    
+				a->y_location = b->y_location - (float)a->height;
 			else if (bothFlat && a->vy < 0.0f)
-				a->y_location = b->y_location + (float)b->height;    
+				a->y_location = b->y_location + (float)b->height;
 			else
-				a->y_location = oldY;                                
+				a->y_location = oldY;
 			if (falling) a->onGround = true;
 			a->vy = 0.0f;
 		}
