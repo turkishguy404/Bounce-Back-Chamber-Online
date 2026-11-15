@@ -654,11 +654,17 @@ void onChar(GLFWwindow*, unsigned int cp) {
 		ipInput.push_back((char)cp);
 }
 
-// ===Chamber
+// ===Chambers
+const int LEVEL_COUNT = 3;
+const char* LEVEL_NAMES[LEVEL_COUNT] = { "THE CHAMBER", "THE SHAFT", "THE SWING" };
+
 std::deque<AstroObjects> level;
 std::vector<AstroObjects*> staticObjs;
 std::vector<AstroObjects*> checkpoints;
-AstroObjects* Acid = nullptr, * PortalA = nullptr, * PortalB = nullptr, * ExitDoor = nullptr;
+std::vector<AstroObjects*> acids;
+std::deque<Hunter> hunters;
+AstroObjects* PortalA = nullptr, * PortalB = nullptr, * ExitDoor = nullptr;
+int currentLevel = 0;
 
 AstroObjects* add(int pw, int ph, int px, int py, int r, int g, int b,
 	bool collidable = true, bool visible = true, const TileStyle* style = nullptr) {
@@ -673,16 +679,34 @@ AstroObjects* add(int pw, int ph, int px, int py, int r, int g, int b,
 	return o;
 }
 
-void buildChamber() {
-	const int G = 550;
+AstroObjects* addAcid(int pw, int ph, int px, int py) {
+	AstroObjects* o = add(pw, ph, px, py, 120, 255, 60, false);
+	acids.push_back(o);
+	return o;
+}
 
-	Acid = add(200, 40, 430, 560, 120, 255, 60, false);
+void addHunter(float x, float y, float minX, float maxX) {
+	hunters.emplace_back();
+	Hunter& h = hunters.back();
+	h.body.astroStartObject(ASTRO_OBJECT_AI, 40, 40, (int)x, (int)y, 0, 0, 0);
+	h.homeX = x; h.homeY = y;
+	h.minX = minX; h.maxX = maxX;
+}
 
-	add(430, 50, 0, G, 0, 0, 0, true, true, &TS_GREEN);
-	add(170, 50, 630, G, 0, 0, 0, true, true, &TS_GREEN);
+void addFrame() {
 	add(10, w.windowHeight, 0, 0, 0, 0, 0, true, true, &TS_GREEN);
 	add(10, w.windowHeight, w.windowWidth - 10, 0, 0, 0, 0, true, true, &TS_GREEN);
 	add(w.windowWidth, 10, 0, 0, 0, 0, 0, true, true, &TS_GREEN);
+}
+
+void buildChamber1() {
+	const int G = 550;
+
+	addAcid(200, 40, 430, 560);
+
+	add(430, 50, 0, G, 0, 0, 0, true, true, &TS_GREEN);
+	add(170, 50, 630, G, 0, 0, 0, true, true, &TS_GREEN);
+	addFrame();
 
 	add(100, 20, 110, 450, 0, 0, 0, true, true, &TS_NAVY);
 	add(30, 350, 300, G - 350, 0, 0, 0, true, true, &TS_NAVY);
@@ -695,6 +719,86 @@ void buildChamber() {
 	add(30, 200, 700, G - 200, 0, 0, 0, true, true, &TS_NAVY);
 
 	ExitDoor = add(50, 80, 740, G - 80, 255, 255, 255, false);
+
+	addHunter(470.0f, 300.0f, 360.0f, 610.0f);
+}
+
+void buildChamber2() {
+	const int G = 550;
+	const int LEDGE = 150;
+
+	addAcid(280, 40, 250, 560);
+
+	add(250, 50, 0, G, 0, 0, 0, true, true, &TS_GREEN);
+	add(270, 50, 530, G, 0, 0, 0, true, true, &TS_GREEN);
+	addFrame();
+
+	add(60, 20, 370, 470, 0, 0, 0, true, true, &TS_NAVY);
+
+	checkpoints.push_back(add(10, 80, 545, G - 80, 0, 200, 0, false));
+	add(30, 150, 600, G - 150, 0, 0, 0, true, true, &TS_NAVY);
+
+	PortalA = add(10, 70, 720, G - 70, 255, 60, 0, false);
+
+	add(200, 20, 10, LEDGE, 0, 0, 0, true, true, &TS_NAVY);
+	PortalB = add(10, 70, 160, LEDGE - 70, 0, 160, 255, false);
+	ExitDoor = add(50, 80, 20, LEDGE - 80, 255, 255, 255, false);
+
+	addHunter(440.0f, 260.0f, 270.0f, 470.0f);
+	addHunter(690.0f, 250.0f, 640.0f, 740.0f);
+}
+
+void buildChamber3() {
+	const int G = 550;
+
+	addAcid(300, 40, 200, 560);
+
+	add(200, 50, 0, G, 0, 0, 0, true, true, &TS_GREEN);
+	add(290, 50, 500, G, 0, 0, 0, true, true, &TS_GREEN);
+	addFrame();
+
+	checkpoints.push_back(add(10, 80, 515, G - 80, 0, 200, 0, false));
+
+	add(100, 20, 600, 450, 0, 0, 0, true, true, &TS_NAVY);
+	add(100, 20, 460, 350, 0, 0, 0, true, true, &TS_NAVY);
+	add(100, 20, 600, 250, 0, 0, 0, true, true, &TS_NAVY);
+	add(190, 20, 330, 150, 0, 0, 0, true, true, &TS_NAVY);
+
+	ExitDoor = add(50, 80, 340, 150 - 80, 255, 255, 255, false);
+
+	addHunter(330.0f, 220.0f, 220.0f, 440.0f);
+	addHunter(650.0f, 90.0f, 560.0f, 730.0f);
+}
+
+void clearLevel() {
+	for (AstroObjects& o : level)
+		if (o.texId) glDeleteTextures(1, &o.texId);
+	for (Hunter& h : hunters)
+		if (h.body.texId) glDeleteTextures(1, &h.body.texId);
+	level.clear();
+	staticObjs.clear();
+	checkpoints.clear();
+	acids.clear();
+	hunters.clear();
+	PortalA = PortalB = ExitDoor = nullptr;
+}
+
+void loadLevel(int index, double now) {
+	clearLevel();
+	currentLevel = index;
+	if (index == 0) buildChamber1();
+	else if (index == 1) buildChamber2();
+	else buildChamber3();
+	for (Hunter& h : hunters) {
+		h.reset(now, 1.5);
+		h.updateLook(now);
+	}
+}
+
+bool inAnyAcid(const AstroObjects& o) {
+	for (AstroObjects* a : acids)
+		if (overlapsTrigger(o, *a)) return true;
+	return false;
 }
 
 bool swinging = false, fWasDown = false, inPortal = false;
@@ -707,6 +811,7 @@ const char* MENU_LABELS[MENU_COUNT] = { "SINGLE PLAYER", "HOST A ROOM", "JOIN A 
 const float MENU_Y = 250.0f;
 const float MENU_STEP = 48.0f;
 const float FADE_TIME = 0.4f;
+const double BANNER_TIME = 2.5;
 
 int main(int argc, char** argv)
 {
@@ -783,19 +888,14 @@ int main(int argc, char** argv)
 	updateDrone(menuBoxB, menuLookB, DP_REMOTE, DF_IDLE, true, false, true);
 
 	// ===Enemy
-	Hunter hunter;
-	hunter.body.astroStartObject(ASTRO_OBJECT_AI, 40, 40, 470, 300, 0, 0, 0);
-	hunter.homeX = 470.0f; hunter.homeY = 300.0f;
-	hunter.minX = 360.0f;  hunter.maxX = 610.0f;
-	hunter.updateLook(glfwGetTime());
-
 	Hunter menuHunter;
 	menuHunter.body.astroStartObject(ASTRO_OBJECT_AI, 40, 40, 690, 160, 0, 0, 0);
 
 	float remoteFacing = -1.0f, remotePrevX = 0.0f, remotePrevY = 0.0f;
 	bool remoteWalking = false, remoteAir = false;
+	int remoteLevel = -1;
 
-	buildChamber();
+	loadLevel(0, glfwGetTime());
 
 	std::deque<AstroObjects> clones;
 	std::vector<AstroObjects*> objects;
@@ -817,7 +917,7 @@ int main(int argc, char** argv)
 	float respawnX = spawnX, respawnY = spawnY;
 	int deaths = 0;
 	double lastRecv = -100.0, startTime = glfwGetTime(), winUntil = 0.0, winTime = 0.0;
-	double spawnAnimUntil = 0.0;
+	double spawnAnimUntil = 0.0, bannerUntil = 0.0;
 	std::string lastTitle;
 
 	AppState appState = STATE_MENU;
@@ -852,6 +952,14 @@ int main(int argc, char** argv)
 		clones.clear();
 		};
 
+	auto resetPlayerToSpawn = [&]() {
+		player.x_location = spawnX; player.y_location = spawnY;
+		player.vx = 0.0f; player.vy = 0.0f; player.angle = 0.0f;
+		respawnX = spawnX; respawnY = spawnY;
+		swinging = false;
+		Rope.isVisible = false;
+		};
+
 	auto startGame = [&](int mode, const std::string& hostIp) -> bool {
 		net = AstroNet();
 		online = false; isClient = false;
@@ -867,19 +975,18 @@ int main(int argc, char** argv)
 		}
 
 		spawnX = isClient ? 110.0f : 50.0f;
+		double t = glfwGetTime();
 		clearClones();
 		hideRemote();
-		player.x_location = spawnX; player.y_location = spawnY;
-		player.vx = 0.0f; player.vy = 0.0f; player.angle = 0.0f;
+		remoteLevel = -1;
+		loadLevel(0, t);
+		resetPlayerToSpawn();
 		player.isVisible = true;
-		Rope.isVisible = false;
-		swinging = false; fWasDown = false; inPortal = false; facing = 1.0f;
+		fWasDown = false; inPortal = false; facing = 1.0f;
 		rWasDown = false;
-		respawnX = spawnX; respawnY = spawnY;
 		deaths = 0;
-		double t = glfwGetTime();
 		startTime = t; winUntil = 0.0; lastRecv = -100.0;
-		hunter.reset(t, 1.5);
+		bannerUntil = t + BANNER_TIME;
 		lastTitle.clear();
 		buildObjects();
 
@@ -941,7 +1048,7 @@ int main(int argc, char** argv)
 				clones.pop_front();
 			}
 			for (auto it = clones.begin(); it != clones.end(); ) {
-				if (it->y_location > w.windowHeight + 100 || overlapsTrigger(*it, *Acid)) {
+				if (it->y_location > w.windowHeight + 100 || inAnyAcid(*it)) {
 					fxBurst(it->x_location + it->width / 2.0f, it->y_location + it->height / 2.0f,
 						0.5f, 1.0f, 0.2f, 14, 140.0f);
 					playSfx(SFX_POP);
@@ -966,30 +1073,37 @@ int main(int argc, char** argv)
 						else if (rdx < -0.3f) remoteFacing = -1.0f;
 					}
 					lastRecv = now;
-					remote.x_location = in.x;
-					remote.y_location = in.y;
-					remote.angle = in.angle;
-					remote.isVisible = true;
-					remote.isCollidable = true;
-					if (in.swinging)
-						updateRopeObject(RopeR, in.anchorX, in.anchorY,
-							in.x + remote.width / 2.0f, in.y + remote.height / 2.0f);
-					else
-						RopeR.isVisible = false;
+					remoteLevel = in.level;
 
-					for (int i = 0; i < NET_MAX_CLONES; i++) {
-						AstroObjects& rc = remoteClones[i];
-						if (i < in.cloneCount) {
-							rc.x_location = in.clones[i].x;
-							rc.y_location = in.clones[i].y;
-							rc.angle = in.clones[i].angle;
-							rc.isVisible = true;
-							rc.isCollidable = true;
+					if (remoteLevel == currentLevel) {
+						remote.x_location = in.x;
+						remote.y_location = in.y;
+						remote.angle = in.angle;
+						remote.isVisible = true;
+						remote.isCollidable = true;
+						if (in.swinging)
+							updateRopeObject(RopeR, in.anchorX, in.anchorY,
+								in.x + remote.width / 2.0f, in.y + remote.height / 2.0f);
+						else
+							RopeR.isVisible = false;
+
+						for (int i = 0; i < NET_MAX_CLONES; i++) {
+							AstroObjects& rc = remoteClones[i];
+							if (i < in.cloneCount) {
+								rc.x_location = in.clones[i].x;
+								rc.y_location = in.clones[i].y;
+								rc.angle = in.clones[i].angle;
+								rc.isVisible = true;
+								rc.isCollidable = true;
+							}
+							else {
+								rc.isVisible = false;
+								rc.isCollidable = false;
+							}
 						}
-						else {
-							rc.isVisible = false;
-							rc.isCollidable = false;
-						}
+					}
+					else {
+						hideRemote();
 					}
 				}
 				if (now - lastRecv > 2.0) hideRemote();
@@ -1088,14 +1202,16 @@ int main(int argc, char** argv)
 			}
 
 			// ===Enemy
-			if (hunter.update(dt, now, pcenterX(), pcenterY(), staticObjs, clones)) {
-				playSfx(SFX_ALERT);
-				fxBurst(hunter.body.x_location + 20.0f, hunter.body.y_location + 20.0f, 1.0f, 0.15f, 0.15f, 10, 120.0f);
+			for (Hunter& h : hunters) {
+				if (h.update(dt, now, pcenterX(), pcenterY(), staticObjs, clones)) {
+					playSfx(SFX_ALERT);
+					fxBurst(h.body.x_location + 20.0f, h.body.y_location + 20.0f, 1.0f, 0.15f, 0.15f, 10, 120.0f);
+				}
 			}
 
 			// ===Portal
-			bool inA = overlapsTrigger(player, *PortalA);
-			bool inB = overlapsTrigger(player, *PortalB);
+			bool inA = PortalA && overlapsTrigger(player, *PortalA);
+			bool inB = PortalB && overlapsTrigger(player, *PortalB);
 			if (!inPortal) {
 				if (inA || inB) {
 					AstroObjects& src = inA ? *PortalA : *PortalB;
@@ -1127,9 +1243,13 @@ int main(int argc, char** argv)
 			}
 
 			// ===Death
-			bool caught = (now >= spawnAnimUntil) && overlapsTrigger(player, hunter.body);
-			if (overlapsTrigger(player, *Acid) || player.y_location > w.windowHeight + 50 || caught) {
-				if (caught) hunter.reset(now, 1.5);
+			Hunter* catcher = nullptr;
+			if (now >= spawnAnimUntil) {
+				for (Hunter& h : hunters)
+					if (overlapsTrigger(player, h.body)) { catcher = &h; break; }
+			}
+			if (inAnyAcid(player) || player.y_location > w.windowHeight + 50 || catcher) {
+				if (catcher) catcher->reset(now, 1.5);
 				float bx = pcenterX();
 				float by = std::min(pcenterY(), (float)w.windowHeight - 10.0f);
 				fxBurst(bx, by, 1.0f, 0.2f, 0.2f, 34, 260.0f);
@@ -1146,21 +1266,25 @@ int main(int argc, char** argv)
 
 			// ===Win
 			if (overlapsTrigger(player, *ExitDoor)) {
-				winTime = now - startTime;
-				winUntil = now + 4.0;
 				playSfx(SFX_WIN);
 				fxConfetti(ExitDoor->x_location + ExitDoor->width / 2.0f,
 					ExitDoor->y_location + ExitDoor->height / 2.0f);
 
+				int next = currentLevel + 1;
+				if (next >= LEVEL_COUNT) {
+					winTime = now - startTime;
+					winUntil = now + 4.0;
+					deaths = 0;
+					startTime = now;
+					next = 0;
+				}
+				bannerUntil = now + BANNER_TIME;
+
 				clearClones();
+				loadLevel(next, now);
 				buildObjects();
-				player.x_location = spawnX; player.y_location = spawnY;
-				player.vx = 0.0f; player.vy = 0.0f; player.angle = 0.0f;
-				respawnX = spawnX; respawnY = spawnY;
-				swinging = false;
-				deaths = 0;
-				startTime = now;
-				hunter.reset(now, 1.5);
+				resetPlayerToSpawn();
+				inPortal = false;
 				playSpawnFx(spawnX, spawnY, now, 0.8f, false);
 			}
 
@@ -1172,8 +1296,8 @@ int main(int argc, char** argv)
 			if (now < winUntil)
 				std::snprintf(title, sizeof(title), "Chamber - CONGRATULATIONS! Time: %.1f s", winTime);
 			else
-				std::snprintf(title, sizeof(title), "Chamber%s - %d s | Deaths: %d | Clones: %d/%d",
-					online ? (isClient ? " (Client)" : " (Host)") : "",
+				std::snprintf(title, sizeof(title), "Chamber %d%s - %d s | Deaths: %d | Clones: %d/%d",
+					currentLevel + 1, online ? (isClient ? " (Client)" : " (Host)") : "",
 					(int)(now - startTime), deaths, (int)clones.size(), MAX_CLONES);
 			if (lastTitle != title) { lastTitle = title; glfwSetWindowTitle(window, title); }
 
@@ -1187,6 +1311,7 @@ int main(int argc, char** argv)
 				out.swinging = swinging ? 1 : 0;
 				out.anchorX = anchorX;
 				out.anchorY = anchorY;
+				out.level = (uint8_t)currentLevel;
 				int n = 0;
 				for (AstroObjects& c : clones) {
 					if (n >= NET_MAX_CLONES) break;
@@ -1221,18 +1346,41 @@ int main(int argc, char** argv)
 			drawAnimatedBackground((float)now, w.windowWidth, w.windowHeight);
 			for (AstroObjects* o : objects)
 				o->astroUpdateObject(w.windowWidth, w.windowHeight);
-			hunter.body.astroUpdateObject(w.windowWidth, w.windowHeight);
-			if (hunter.alert) {
-				float a = 0.6f + 0.4f * std::sin((float)now * 10.0f);
-				drawTextCentered("!", hunter.body.x_location + 20.0f, hunter.body.y_location - 22.0f,
-					3.0f, 1.0f, 0.2f, 0.2f, a);
+			for (Hunter& h : hunters) {
+				h.body.astroUpdateObject(w.windowWidth, w.windowHeight);
+				if (h.alert) {
+					float a = 0.6f + 0.4f * std::sin((float)now * 10.0f);
+					drawTextCentered("!", h.body.x_location + 20.0f, h.body.y_location - 22.0f,
+						3.0f, 1.0f, 0.2f, 0.2f, a);
+				}
 			}
 			drawFx();
+
+			// ===Chamber banner
+			if (now < winUntil) {
+				float a = (float)std::min(1.0, winUntil - now);
+				char line[64];
+				std::snprintf(line, sizeof(line), "TIME: %.1f S", winTime);
+				drawTextCentered("CONGRATULATIONS!", w.windowWidth / 2.0f, 200.0f, 6.0f, 1.0f, 0.85f, 0.3f, a);
+				drawTextCentered(line, w.windowWidth / 2.0f, 260.0f, 3.0f, 1.0f, 1.0f, 1.0f, a);
+			}
+			else if (now < bannerUntil) {
+				float a = (float)std::min(1.0, bannerUntil - now);
+				char head[32];
+				std::snprintf(head, sizeof(head), "CHAMBER %d", currentLevel + 1);
+				drawTextCentered(head, w.windowWidth / 2.0f, 200.0f, 6.0f, 1.0f, 0.55f, 0.1f, a);
+				drawTextCentered(LEVEL_NAMES[currentLevel], w.windowWidth / 2.0f, 254.0f, 3.0f, 0.75f, 0.8f, 0.9f, a);
+			}
 
 			if (online && now - lastRecv > 2.0) {
 				float a = 0.6f + 0.4f * std::sin((float)now * 4.0f);
 				drawTextCentered(isClient ? "CONNECTING..." : "WAITING FOR PLAYER...",
 					w.windowWidth / 2.0f, 22.0f, 2.0f, 1.0f, 1.0f, 1.0f, a);
+			}
+			else if (online && remoteLevel >= 0 && remoteLevel != currentLevel) {
+				char msg[48];
+				std::snprintf(msg, sizeof(msg), "PARTNER IS IN CHAMBER %d", remoteLevel + 1);
+				drawTextCentered(msg, w.windowWidth / 2.0f, 22.0f, 2.0f, 0.35f, 0.6f, 1.0f, 0.9f);
 			}
 		}
 		else
@@ -1393,6 +1541,7 @@ int main(int argc, char** argv)
 	}
 
 	// ===Cleanup
+	clearLevel();
 	for (int i = 0; i < SFX_COUNT; i++)
 		if (sfxLoaded[i]) ma_sound_uninit(&sfx[i]);
 	if (musicLoaded) ma_sound_uninit(&music);
