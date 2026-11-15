@@ -12,7 +12,7 @@
 #endif
 
 #define NET_PORT        7777
-#define NET_MAGIC       0x42424B32u
+#define NET_MAGIC       0x42424B33u
 #define NET_MAX_CLONES  5
 
 #pragma pack(push, 1)
@@ -22,6 +22,7 @@ struct NetPacket {
 	float x, y, angle;
 	uint8_t swinging;
 	float anchorX, anchorY;
+	uint8_t level;
 	uint8_t cloneCount;
 	NetClone clones[NET_MAX_CLONES];
 };
